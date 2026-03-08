@@ -1,0 +1,114 @@
+# Home Assistant Stack
+# ====================
+# Runs on: prod utility server
+# Purpose: Local home automation hub — controls smart devices without cloud
+#
+# Home Assistant is the central brain for home automation. It talks to
+# Zigbee, Z-Wave, WiFi, Bluetooth, and MQTT devices, providing a unified
+# dashboard and automation engine.
+#
+# WHY HOST NETWORKING (and why this is an exception)
+# ──────────────────────────────────────────────────
+# Chapter 03 says "don't use host networking." This is the exception.
+# Home Assistant needs host networking for mDNS (multicast DNS) and
+# SSDP (Simple Service Discovery Protocol) to auto-discover devices
+# on your local network. Without it, devices like Chromecast, Sonos,
+# Philips Hue bridges, and many WiFi smart devices simply won't appear.
+#
+# Bridge networking with explicit port mappings would let you access
+# the web UI but would break device discovery — which defeats the
+# purpose of running Home Assistant. The trade-off is worth it here.
+#
+# ZIGBEE/Z-WAVE USB COORDINATORS
+# ──────────────────────────────
+# If you use Zigbee or Z-Wave devices, you need a USB coordinator
+# plugged into the host and passed through to the container.
+# See the "devices" section below (commented out by default).
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your values
+#   docker compose up -d
+#
+# First-time setup: open http://your-server:8123 to create your account.
+
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:${HA_VERSION:-stable}
+    container_name: homeassistant
+    restart: unless-stopped
+
+    volumes:
+      # Home Assistant configuration directory.
+      # Contains configuration.yaml, automations, scripts, and the database.
+      - ha_config:/config
+
+    # Host networking — required for device discovery.
+    # See the header comment for why this is a justified exception.
+    # The web UI will be available on port 8123 on the host's IP.
+    network_mode: host
+
+    environment:
+      - TZ=${TZ:-UTC}
+
+    # ── USB Device Passthrough ─────────────────────────────────
+    # Uncomment and adjust for your specific USB coordinator.
+    #
+    # To find your device path:
+    #   ls -la /dev/serial/by-id/
+    #
+    # Common devices:
+    #   Sonoff ZBDongle-E (Zigbee): /dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_...-if00
+    #   Sonoff ZBDongle-P (Zigbee): /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_...-if00
+    #   Zooz Z-Wave stick:          /dev/serial/by-id/usb-Silicon_Labs_...-if00
+    #
+    # IMPORTANT: Always use /dev/serial/by-id/ paths, not /dev/ttyUSB0.
+    # The ttyUSB numbers can change between reboots. The by-id paths are stable.
+    #
+    # devices:
+    #   - "${ZIGBEE_DEVICE:-/dev/serial/by-id/usb-ITEAD_SONOFF_Zigbee_your-device-id}:/dev/ttyUSB0"
+
+    # ── Privileged Mode ────────────────────────────────────────
+    # Uncomment if you need Bluetooth device discovery or certain
+    # USB devices that require elevated permissions.
+    #
+    # THE TRADE-OFF: privileged mode gives the container full access
+    # to the host's devices and kernel capabilities. This is a real
+    # security concession. Only enable it if you specifically need
+    # Bluetooth or a device that won't work without it. Test without
+    # privileged mode first.
+    #
+    # privileged: true
+
+    deploy:
+      resources:
+        limits:
+          # Home Assistant can be CPU-hungry during automations, database
+          # operations, and when loading integrations. 2 cores is a good
+          # balance between performance and not starving other services.
+          cpus: "${HA_CPU_LIMIT:-2.0}"
+          memory: ${HA_MEM_LIMIT:-1G}
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:8123/api/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # Home Assistant takes a while to start, especially on first boot
+      # when it's installing integrations and building the database.
+      start_period: 120s
+
+# Named volumes persist data across container restarts and upgrades.
+volumes:
+  ha_config:
+    name: ha_config
+
+# No networks section — network_mode: host means this container
+# shares the host's network stack directly. It doesn't join Docker
+# networks. The web UI is accessible at http://host-ip:8123.
+#
+# To put Home Assistant behind SWAG, configure SWAG to proxy to
+# the host's IP:8123 using a standard proxy config file rather
+# than Docker network routing.

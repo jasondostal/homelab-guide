@@ -1,0 +1,237 @@
+# Apps Stack — The Fun Stuff
+# ==========================
+# Runs on: prod utility server
+# Purpose: Media server, password manager, and dashboard
+#
+# This stack contains the services that make your homelab worth having:
+#   - Jellyfin: self-hosted media server (your own Netflix)
+#   - Vaultwarden: self-hosted Bitwarden-compatible password manager
+#   - Homepage: dashboard and landing page for all your services
+#
+# All three are exposed through SWAG reverse proxy via the shared
+# swag_public network. Direct port access is provided for initial
+# setup but can be removed once SWAG routing is confirmed.
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your values
+#   docker compose up -d
+
+services:
+  # ─── Jellyfin ────────────────────────────────────────────────
+  # Self-hosted media server. Streams movies, TV, music, and photos
+  # to any device. Fully open source, no account required.
+  #
+  # Hardware transcoding: the /dev/dri device passthrough enables
+  # Intel Quick Sync (or AMD VAAPI) hardware transcoding. This is
+  # the difference between "one 4K stream maxes out your CPU" and
+  # "ten simultaneous streams and the CPU yawns."
+  #
+  # After first boot, complete setup at http://your-server:8096
+  # Then enable hardware transcoding in Dashboard > Playback > Transcoding.
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:${JELLYFIN_VERSION:-latest}
+    container_name: jellyfin
+    restart: unless-stopped
+
+    volumes:
+      # Jellyfin configuration, metadata, and database.
+      - jellyfin_config:/config
+      # Media libraries. Adjust these paths to match your storage layout.
+      # Read-only mounts prevent Jellyfin from modifying your media files.
+      - ${MEDIA_MOVIES_PATH:-/mnt/media/movies}:/data/movies:ro
+      - ${MEDIA_TV_PATH:-/mnt/media/tv}:/data/tv:ro
+      - ${MEDIA_MUSIC_PATH:-/mnt/media/music}:/data/music:ro
+
+    # Hardware transcoding device passthrough.
+    # /dev/dri provides access to Intel Quick Sync / AMD VAAPI.
+    # If your server doesn't have an iGPU, remove this section —
+    # Jellyfin will fall back to software transcoding.
+    devices:
+      - /dev/dri:/dev/dri
+
+    ports:
+      - "${JELLYFIN_PORT:-8096}:8096"
+
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+      # Optional: set to use a specific cache directory for transcodes.
+      # A fast SSD path here improves transcode performance.
+      # - JELLYFIN_CACHE_DIR=/config/cache
+
+    labels:
+      - "swag=enable"
+      - "swag_url=${JELLYFIN_SUBDOMAIN:-jellyfin}.${DOMAIN}"
+      - "swag_port=8096"
+      - "swag_proto=http"
+
+    deploy:
+      resources:
+        limits:
+          # Jellyfin needs more CPU headroom for transcoding, even with
+          # hardware acceleration. 4 cores is generous but appropriate
+          # if you expect multiple simultaneous streams.
+          cpus: "${JELLYFIN_CPU_LIMIT:-4.0}"
+          memory: ${JELLYFIN_MEM_LIMIT:-2G}
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:8096/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    networks:
+      - apps
+      - swag_public
+
+  # ─── Vaultwarden ─────────────────────────────────────────────
+  # Lightweight Bitwarden-compatible password manager.
+  # Single container, SQLite database, ~30MB RAM. Compatible with
+  # all official Bitwarden clients and browser extensions.
+  #
+  # SECURITY NOTE: This is the highest-value target in your homelab.
+  # - Always access through SWAG (HTTPS only)
+  # - Enable 2FA immediately after first login
+  # - Back up the data volume frequently
+  # - Configure fail2ban rules in SWAG for this service
+  #
+  # After first boot, create your account at https://vault.yourdomain.com
+  # Then DISABLE new user registration (see SIGNUPS_ALLOWED below).
+  vaultwarden:
+    image: vaultwarden/server:${VAULTWARDEN_VERSION:-latest}
+    container_name: vaultwarden
+    restart: unless-stopped
+
+    volumes:
+      # Vaultwarden data: SQLite database, attachments, RSA keys.
+      # This volume is critical — back it up aggressively.
+      - vaultwarden_data:/data
+
+    # No direct port exposure by default. Access through SWAG only.
+    # Uncomment for initial setup if SWAG isn't configured yet.
+    # ports:
+    #   - "${VAULTWARDEN_PORT:-8080}:80"
+
+    environment:
+      - TZ=${TZ:-UTC}
+      # Domain where Vaultwarden is accessible (used for email links, etc.)
+      - DOMAIN=https://${VAULTWARDEN_SUBDOMAIN:-vault}.${DOMAIN}
+      # Disable new user registration after you've created your account.
+      # Set to "true" for initial setup, then change to "false".
+      - SIGNUPS_ALLOWED=${VAULTWARDEN_SIGNUPS:-false}
+      # Enable the admin panel at /admin (optional).
+      # Generate a token with: openssl rand -base64 48
+      # Leave empty to disable the admin panel entirely.
+      - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN:-}
+      # WebSocket support for live sync between clients.
+      - WEBSOCKET_ENABLED=true
+      # Rate limiting for login attempts (defense in depth with fail2ban).
+      - LOGIN_RATELIMIT_MAX_BURST=5
+      - LOGIN_RATELIMIT_SECONDS=60
+
+    labels:
+      - "swag=enable"
+      - "swag_url=${VAULTWARDEN_SUBDOMAIN:-vault}.${DOMAIN}"
+      - "swag_port=80"
+      - "swag_proto=http"
+
+    deploy:
+      resources:
+        limits:
+          # Vaultwarden is extremely lightweight.
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:80/alive || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    networks:
+      - apps
+      - swag_public
+
+  # ─── Homepage ────────────────────────────────────────────────
+  # Dashboard and landing page for your homelab. YAML-configured,
+  # supports service health widgets, Docker integration, and
+  # live stats from dozens of services.
+  #
+  # Configuration lives in the config volume. After first boot,
+  # edit the YAML files in the volume to add your services:
+  #   docker exec homepage ls /app/config/
+  #
+  # Or mount a host directory instead of a named volume to keep
+  # your dashboard config in git alongside your compose files.
+  homepage:
+    image: ghcr.io/gethomepage/homepage:${HOMEPAGE_VERSION:-latest}
+    container_name: homepage
+    restart: unless-stopped
+
+    volumes:
+      # Homepage configuration (services.yaml, widgets.yaml, etc.)
+      - homepage_config:/app/config
+      # Docker socket for container status widgets.
+      # Read-only access lets Homepage show running/stopped status.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    ports:
+      - "${HOMEPAGE_PORT:-3000}:3000"
+
+    environment:
+      - TZ=${TZ:-UTC}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+
+    labels:
+      - "swag=enable"
+      - "swag_url=${HOMEPAGE_SUBDOMAIN:-home}.${DOMAIN}"
+      - "swag_port=3000"
+      - "swag_proto=http"
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    networks:
+      - apps
+      - swag_public
+
+# Named volumes persist data across container restarts and upgrades.
+volumes:
+  jellyfin_config:
+    name: jellyfin_config
+  vaultwarden_data:
+    name: vaultwarden_data
+  homepage_config:
+    name: homepage_config
+
+networks:
+  # Internal network for inter-service communication within this stack.
+  apps:
+    name: apps
+    driver: bridge
+  # Join the SWAG network so the reverse proxy can route to these services.
+  swag_public:
+    external: true

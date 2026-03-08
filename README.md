@@ -28,6 +28,8 @@ The full-length primer, heavy on *why* and trade-offs:
 | [07 - AI Dev Stack](guide/07-ai-dev-stack.md) | The cortex box, MCP servers, Postgres/pgvector, local inference |
 | [08 - Security Hardening](guide/08-security-hardening.md) | Defense in depth, the layer model, what actually matters |
 | [09 - Day Two Ops](guide/09-day-two-ops.md) | Updates, maintenance, incident response, growing the lab |
+| [10 - Domains, Certs & Remote Access](guide/10-domains-certs-remote-access.md) | DNS, dynamic IP, TLS certs, Tailscale, VPN options |
+| [11 - The Fun Stuff](guide/11-fun-stuff.md) | Ad blocking, media, home automation, and why you started this |
 
 ### The Stacks
 
@@ -35,12 +37,15 @@ Working `docker-compose.yml` files and `.env.example` templates, organized by fu
 
 ```
 stacks/
-├── core/          # Portainer, management tooling
-├── swag/          # Reverse proxy, SSL, fail2ban
-├── monitoring/    # Health checks, uptime monitoring
-├── data/          # Postgres, Redis, pgvector
-├── ai-cortex/     # AI dev stack — inference, MCP, embeddings
-└── backups/       # Restic orchestration
+├── core/            # Portainer, management tooling
+├── swag/            # Reverse proxy, SSL, fail2ban
+├── dns/             # AdGuard Home — ad blocking, split DNS
+├── monitoring/      # Health checks, uptime monitoring
+├── data/            # Postgres, Redis, pgvector
+├── ai-cortex/       # AI dev stack — inference, MCP, embeddings
+├── apps/            # Jellyfin, Vaultwarden, Homepage dashboard
+├── homeassistant/   # Home automation
+└── backups/         # Restic orchestration
 ```
 
 ### Scripts

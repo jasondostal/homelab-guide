@@ -1,0 +1,109 @@
+# DNS Stack — AdGuard Home
+# ========================
+# Runs on: prod utility server
+# Purpose: Network-wide DNS-level ad/tracker blocking and split DNS
+#
+# AdGuard Home provides:
+#   - DNS-level ad and tracker blocking for all devices
+#   - Split-horizon DNS for internal service resolution
+#   - DNS-over-HTTPS (DoH) and DNS-over-TLS (DoT) support
+#   - Per-client filtering rules (great with VLAN segmentation)
+#
+# IMPORTANT: Port 53 conflict with systemd-resolved
+# ─────────────────────────────────────────────────
+# Ubuntu/Debian systems run systemd-resolved, which listens on port 53.
+# You MUST disable it before starting this container:
+#
+#   sudo sed -i 's/#DNSStubListener=yes/DNSStubListener=no/' /etc/systemd/resolved.conf
+#   sudo systemctl restart systemd-resolved
+#   sudo rm /etc/resolv.conf
+#   sudo ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
+#
+# Verify port 53 is free:
+#   sudo ss -tulnp | grep ':53'
+#
+# After AdGuard Home is running, point your router's DHCP DNS setting
+# to this server's IP address so all devices use it automatically.
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your values
+#   docker compose up -d
+#
+# First-time setup: open http://your-server:3000 to run the setup wizard.
+# After setup, the admin UI moves to the port configured during setup
+# (default: 8080). The setup wizard port (3000) is only used once.
+
+services:
+  adguard:
+    image: adguard/adguardhome:${ADGUARD_VERSION:-latest}
+    container_name: adguard-home
+    restart: unless-stopped
+
+    volumes:
+      # AdGuard Home working directory — filters, query logs, stats.
+      - adguard_work:/opt/adguardhome/work
+      # AdGuard Home configuration — settings, custom filtering rules.
+      - adguard_conf:/opt/adguardhome/conf
+
+    ports:
+      # ── DNS ──
+      # Standard DNS. This is what all your network devices will query.
+      - "${ADGUARD_DNS_HOST:-0.0.0.0}:53:53/tcp"
+      - "${ADGUARD_DNS_HOST:-0.0.0.0}:53:53/udp"
+
+      # ── Admin UI ──
+      # Setup wizard (first run only). After initial setup, this port
+      # is no longer used — the admin UI moves to port 8080.
+      - "${ADGUARD_SETUP_PORT:-3000}:3000/tcp"
+      # Admin UI (after setup). This is your day-to-day management interface.
+      - "${ADGUARD_ADMIN_PORT:-8080}:80/tcp"
+
+      # ── Encrypted DNS (optional) ──
+      # Uncomment these if you configure DoH/DoT in the AdGuard settings.
+      # DoT (DNS-over-TLS)
+      # - "853:853/tcp"
+      # DoH (DNS-over-HTTPS)
+      # - "443:443/tcp"
+
+    environment:
+      - TZ=${TZ:-UTC}
+
+    deploy:
+      resources:
+        limits:
+          # AdGuard Home is very lightweight. These limits are generous.
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+    healthcheck:
+      # Query localhost for DNS resolution to verify the service is working.
+      # We resolve a known-good domain rather than checking an HTTP endpoint
+      # because DNS is the actual service we care about.
+      test: ["CMD-SHELL", "nslookup localhost 127.0.0.1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    networks:
+      - dns
+
+# Named volumes persist data across container restarts and upgrades.
+volumes:
+  adguard_work:
+    name: adguard_work
+  adguard_conf:
+    name: adguard_conf
+
+# AdGuard Home doesn't join the swag_public network because:
+# 1. DNS operates on port 53, not through the reverse proxy
+# 2. The admin UI is internal-only and doesn't need external access
+# If you want to expose the admin UI through SWAG, add swag_public
+# as an external network and the appropriate labels.
+networks:
+  dns:
+    name: dns
+    driver: bridge
