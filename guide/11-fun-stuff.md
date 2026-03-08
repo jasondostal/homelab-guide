@@ -375,6 +375,224 @@ Seriously. The notes/knowledge management space has approximately ten thousand o
 
 ---
 
+## Serving 418: I'm a Teapot
+
+### The Best Easter Egg in HTTP
+
+RFC 2324 defines HTTP status code 418: "I'm a teapot." It was an April Fools' joke in 1998. It's also a perfect homelab tradition.
+
+Set up your reverse proxy to serve a 418 response on a dedicated subdomain. Put an ASCII teapot on it. Make it the first thing you deploy. It's a smoke test for your entire SWAG + DNS + cert stack in one go, and it's funny every single time.
+
+Here's a minimal nginx config for SWAG:
+
+```nginx
+# stacks/swag/config/nginx/proxy-confs/teapot.subdomain.conf
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name teapot.*;
+
+    include /config/nginx/ssl.conf;
+
+    location / {
+        default_type text/plain;
+        return 418 '
+        _______
+       |       |
+       |       |
+       |  418  |
+    ___|       |___
+   |   |_______|   |-----.
+   |               |     |
+    \             /      |
+     \___________|______/
+
+    I am a teapot.
+
+    This server is a teapot. It cannot brew coffee.
+    It can, however, confirm that your DNS, certs,
+    and reverse proxy are all working correctly.
+
+    RFC 2324 — https://datatracker.ietf.org/doc/html/rfc2324
+';
+    }
+}
+```
+
+If `https://teapot.home.yourdomain.com` returns a 418 with a valid cert and an ASCII teapot, your entire edge stack is working. DNS resolves. Certs are valid. SWAG is proxying. Fail2ban is watching. You can deploy real services with confidence.
+
+It's also a great conversation starter when someone asks what you're running. "Well, first things first — I have a teapot."
+
+> **Note:** Some monitoring tools flag 418 as an error. You can configure Uptime Kuma or Healthchecks.io to accept 418 as a valid response code. This is the correct thing to do. The teapot is not in error. The teapot is performing exactly as designed.
+
+---
+
+## Your Home as a Platform: Hardware, Sensors & Custom Devices
+
+### The Big Picture
+
+Everything up to this point has been software running in containers. That's half the story. The other half is the physical layer — hardware devices, sensors, microcontrollers, and custom builds that turn your house from a place with a server into a genuinely interconnected platform.
+
+Home Assistant is the hub. The rest are the spokes. And once you see how they compose, you'll understand why the "composable primitives" philosophy from Chapter 00 applies to hardware too.
+
+### Shelly Relays: Smart Switches Without the Cloud
+
+Shelly devices are WiFi-based relays, switches, and sensors made by a Bulgarian company that actually respects local control. Every Shelly device works over local HTTP, CoAP, or MQTT — no cloud account required, no app dependency, no telemetry.
+
+Why Shelly specifically:
+
+- **Local API out of the box.** No firmware flashing required (though you can flash ESPHome onto most Shellys if you want to).
+- **DIN rail and in-wall form factors.** These aren't smart plugs — they go behind your existing wall switches or in your electrical panel. Your house looks normal. The switches still work manually. But now Home Assistant knows about them.
+- **Power monitoring.** Models like the Shelly 1PM and Shelly Pro 4PM report real-time power consumption. You can monitor individual circuits — how much power your server rack draws, whether the dryer is done, if someone left the space heater on.
+- **Robust and reliable.** These things just work. They don't need babysitting. Flash them, configure MQTT, and forget about them for years.
+
+Practical applications:
+
+- **Remote power cycling.** Put a Shelly relay on your server's power feed. If the box locks up hard and you're not home, you can power-cycle it from Home Assistant. This sounds paranoid until the first time you need it.
+- **Garage door control.** A Shelly 1 wired to your garage door opener gives you open/close/status from Home Assistant. Add a door sensor for confirmation. Automate: close automatically at 10 PM if left open.
+- **Holiday lighting.** Control outdoor circuits by schedule, sunset triggers, or manual override. No smart plugs in weatherproof boxes — a DIN rail Shelly in your panel handles it cleanly.
+- **Heat monitoring.** Shelly's add-on temperature probes let you monitor enclosure temperatures, server closets, attics, freezers. Alert when thresholds are exceeded.
+
+> **Note:** Shelly devices work on WiFi, so they go on your IoT VLAN. Home Assistant bridges the VLAN gap. The devices can't reach the internet, but HA can still control them locally. This is the architecture working exactly as designed.
+
+### WLED: Addressable LEDs That Actually Slap
+
+WLED is open-source firmware for ESP8266/ESP32 microcontrollers that drives addressable LED strips (WS2812B, SK6812, etc.). It turns cheap LED hardware into something with a genuinely good web UI, preset management, sync groups, and — critically — Home Assistant integration via MQTT or its native API.
+
+What you can do:
+
+- **Permanent holiday lighting.** WS2812B strips in outdoor channels, controlled by WLED. Every holiday, every color, every pattern — no climbing ladders to swap lights. Schedule Christmas colors from November through January, then switch to everyday accent lighting the rest of the year.
+- **Bias lighting behind monitors and TVs.** Reduces eye strain, looks great, controllable from Home Assistant.
+- **Under-cabinet, stairway, and accent lighting.** Motion-triggered via Home Assistant automation, with WLED handling the rendering.
+- **Notification lighting.** Flash a strip red when your backup fails. Pulse blue when the doorbell rings. Use light as an ambient information display.
+
+Hardware you need: an ESP32 board ($5-8), a WS2812B LED strip ($15-40 depending on length and density), a 5V power supply sized for your strip (roughly 60mA per LED at full white), and three wires. Flash WLED via the web installer, configure in the browser, add to Home Assistant.
+
+WLED supports segments (different parts of a strip doing different things), sync groups (multiple controllers synchronized), and presets (save and recall configurations). Multiple WLED instances on your network discover each other automatically for sync.
+
+Scaling up: a serious installation (say, ~1,000 pixels of permanent outdoor lighting) needs proper planning — power injection every 150-200 LEDs, weatherproof connectors, a Dig-Quad or similar multi-output controller, and a dedicated power supply. But you can start with a $20 test strip on your desk to learn the ecosystem before committing to a roofline installation.
+
+### Custom ESP32 Projects with ESPHome
+
+ESPHome is a framework for creating custom firmware for ESP32 and ESP8266 microcontrollers using YAML configuration. Yes, more YAML. But this time the YAML compiles to C++ firmware that runs on a $5 microcontroller, and the result integrates directly with Home Assistant.
+
+This is where your homelab stops being "a server with some containers" and becomes a sensor network:
+
+- **Temperature and humidity sensors** in every room (BME280 sensor + ESP32 = $8, reports to HA over WiFi)
+- **Irrigation controllers** — ESP32 + relay board + solenoid valves. Schedule from Home Assistant, adjust based on weather API data, monitor soil moisture. Commercial smart irrigation controllers cost $200+ and require cloud accounts. This costs $30 in parts and runs locally forever.
+- **RFID repeaters** — ESP32 + PN532 NFC reader. Scan a tag at the door and Home Assistant knows who's home. Trigger per-person lighting scenes, disable the alarm, send a notification.
+- **Air quality monitoring** — PMS5003 particulate sensor + BME280. Know when to run the air purifier, when to open windows, track seasonal trends.
+- **Custom control panels** — ESP32 + rotary encoder + small OLED display. A physical knob on your desk that controls volume, lighting, or anything else Home Assistant manages.
+
+The ESPHome workflow:
+
+1. Write a YAML config describing your sensors, outputs, and automations
+2. ESPHome compiles it to firmware and flashes it to the device (OTA updates after initial flash)
+3. The device appears in Home Assistant automatically
+4. Data flows, automations trigger, dashboards update
+
+> **Warning:** Custom hardware is addictive in a different way than software. You'll start with "I just want a temperature sensor in the garage" and end up with a custom PCB, a 3D-printed enclosure, and a twelve-sensor mesh network. Budget accordingly — in both money and time.
+
+### BirdNET-Pi: When Your Homelab Listens to Nature
+
+This one's a wildcard, and it's a perfect example of "things you can do that no cloud service offers."
+
+BirdNET-Pi runs a neural network (Cornell Lab's BirdNET) on a Raspberry Pi with a USB microphone, identifying birds in your yard by their calls in real-time. It builds a database of what species visit, when they're active, seasonal migration patterns, and confidence-scored identifications.
+
+What makes it a homelab project and not just a Raspberry Pi project:
+
+- **Data feeds into Home Assistant.** You can trigger automations on bird detections — turn on a camera when a rare species is identified, log daily species counts, send a notification when the first robin of spring arrives.
+- **Long-term data storage.** BirdNET-Pi generates a SQLite database of detections. Back it up with your restic setup. Analyze trends over months and years.
+- **The spectrograms are fascinating.** The web UI shows real-time spectrograms with species identification overlays. It's genuinely mesmerizing and a great way to learn bird calls.
+- **Pairs with outdoor microphones and your IoT VLAN.** The Pi sits on the IoT network, ships data to Home Assistant, which logs it and triggers automations.
+
+It's a $50 project (Pi Zero 2W + USB mic + case) that produces something no commercial product replicates. And it's a perfect gateway drug to environmental monitoring — add a weather station, an all-sky camera, a lightning detector. Your homelab isn't just serving your digital life; it's observing the world around you.
+
+### The Platform Mindset
+
+Zoom out for a second. Look at what you've built:
+
+- A server running containers (compute)
+- A reverse proxy handling traffic (networking)
+- Sensors reporting data (observation)
+- Actuators controlling devices (action)
+- A hub correlating everything (intelligence)
+- Backups protecting it all (resilience)
+
+This is a platform. Not in the VC-funded, growth-hacking sense. A platform in the engineering sense: a foundation that you can build arbitrary things on. Want to know when your packages are delivered? Add a camera + object detection. Want to optimize your electricity bill? Add power monitoring + time-of-use rate data. Want to know if your sump pump is running? Add a vibration sensor.
+
+Each new capability is a composable primitive that integrates with the system you've already built. That's the payoff of doing the infrastructure right. The marginal cost of adding "one more sensor" approaches the cost of the hardware itself, because the software layer, the networking, the monitoring, and the backup strategy already exist.
+
+Your home becomes a platform you control, extend, and maintain — not a collection of apps from different companies that may or may not still exist next year.
+
+---
+
+## Experimenting on AWS Free Tier
+
+### Your Homelab's Cloud Extension
+
+This might seem contradictory — a self-hosting guide telling you to use AWS. But the AWS Free Tier is too useful to ignore, especially as a learning tool and as a complement (not replacement) for your homelab.
+
+The Free Tier gives you 12 months of access to a staggering number of services at zero cost. Most homelab guides ignore this entirely. That's a mistake. Treat AWS Free Tier as your lab's cloud campus — a place to experiment with things that don't make sense to run at home.
+
+### What's Actually Useful on Free Tier
+
+This isn't just about AI/Bedrock. The breadth is the point:
+
+**Compute & Hosting:**
+- **EC2** (750 hrs/month t2.micro or t3.micro) — a small cloud VM. Use it as a VPS relay if you're behind CGNAT, a remote WireGuard endpoint, or a place to test deployments before running them at home.
+- **Lambda** (1M requests/month, 400,000 GB-seconds) — serverless functions. Great for webhooks, API integrations, and small automations that don't justify a running container.
+- **Lightsail** (first 3 months free) — simpler VPS. Good for a public-facing landing page or status page.
+
+**Storage:**
+- **S3** (5GB, 20,000 GETs, 2,000 PUTs) — object storage. Use it as a restic backend for your off-prem backups, or host a static site.
+- **DynamoDB** (25GB, 25 read/write capacity units) — NoSQL database. Experiment with serverless data patterns.
+
+**AI & Machine Learning:**
+- **Bedrock** — managed access to Claude, Llama, and other foundation models. Compare API-based inference to your local Ollama setup.
+- **SageMaker** (first 2 months, 250 hours of t3.medium notebook) — ML notebooks. Good for experimenting with model fine-tuning or data processing.
+- **Rekognition** (5,000 images/month) — image analysis. Compare to self-hosted alternatives.
+- **Transcribe** (60 minutes/month for 12 months) — speech to text.
+- **Comprehend** — NLP, sentiment analysis, entity extraction.
+
+**Networking:**
+- **CloudFront** (1TB transfer out, 10M requests) — CDN. Put it in front of a static site or use it as a global cache for your homelab's public-facing services.
+- **Route 53** — hosted DNS zones. Alternative to Cloudflare if you want to manage DNS as code with Terraform.
+- **API Gateway** (1M API calls/month) — managed API endpoints. Wire up Lambda functions behind a proper API.
+
+**Developer Tools:**
+- **CodeBuild** (100 build minutes/month) — CI/CD. Build your container images in the cloud instead of locally.
+- **CodeCommit** (5 active users) — git hosting. Might prefer GitHub, but it exists.
+- **SNS** (1M publishes) + **SQS** (1M requests) — messaging and queuing. Experiment with event-driven architectures.
+
+**Monitoring & Observability:**
+- **CloudWatch** (10 custom metrics, 10 alarms) — use it as an external monitoring layer for your homelab. Alert when your home IP changes, when health checks fail from outside your network, when cert expiry approaches.
+
+### The Smart Way to Use Free Tier
+
+Don't try to learn all of AWS. Do this instead:
+
+1. **Pick one project.** "I want to set up an S3 bucket as a restic backup target" or "I want a Lambda function that monitors my homelab's public IP and texts me if it changes."
+2. **Build it.** Use the free tier. Stay within limits. Set up billing alerts (seriously — `$1 threshold` billing alarm, day one, no exceptions).
+3. **Understand the bill.** Even on free tier, understand what would cost money at scale. AWS pricing is intentionally confusing. Knowing where the costs hide is a skill worth having.
+4. **Connect it to your homelab.** S3 as a backup target. CloudWatch as external monitoring. Lambda as a webhook processor. API Gateway as a public endpoint that talks to your home network via Tailscale.
+
+> **Warning:** AWS billing can surprise you. Set up a billing alarm at $1 on day one. Turn it on before you create anything else. Free tier limits are generous but specific — exceed them by one unit and you're paying on-demand rates. Use the AWS Free Tier Usage dashboard to track consumption. If you see charges appearing, stop and investigate immediately.
+
+### What Doesn't Make Sense
+
+- Don't run your homelab services on AWS. That defeats the purpose and gets expensive fast.
+- Don't use AWS as your primary backup target if Backblaze B2 is cheaper (it usually is for storage-heavy workloads). B2 is $6/TB/month with free egress. S3 charges for egress.
+- Don't build on AWS Free Tier services that you'll need to pay for after 12 months unless you've budgeted for it.
+
+### The Learning Value
+
+The real value of Free Tier isn't the free compute. It's understanding how cloud infrastructure works — IAM roles, VPCs, security groups, managed services, infrastructure as code. This makes you a better engineer whether you're running a homelab or building production systems at work.
+
+Your homelab teaches you ops from the bottom up. AWS Free Tier teaches you ops from the top down. Both perspectives make the other more valuable.
+
+---
+
 ## The "One More Thing" Trap
 
 Here's the danger of this chapter: everything in it is easy to deploy. Every service is a compose file, an `.env` file, and ten minutes. The feedback loop is intoxicating. Deploy a thing, see it work, feel the satisfaction of another green tile on your dashboard. Deploy another. And another.
