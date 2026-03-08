@@ -1,0 +1,124 @@
+# Data Stack
+# ==========
+# Runs on: either box (cortex for dev, prod for shared services)
+# Purpose: PostgreSQL with pgvector and Redis for application backends
+#
+# This stack provides the data layer that other services depend on.
+# PostgreSQL with pgvector is particularly useful for AI/ML workloads
+# that need vector similarity search (e.g., RAG pipelines, embeddings).
+#
+# Redis serves as a fast cache and message broker.
+#
+# Both services connect to a shared "backend" network that other stacks
+# can join when they need database access.
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your values
+#   docker compose up -d
+
+services:
+  postgres:
+    # pgvector/pgvector:pg16 is the official PostgreSQL 16 image with
+    # the pgvector extension pre-installed. You get full Postgres plus
+    # vector operations for embeddings and similarity search.
+    image: pgvector/pgvector:${POSTGRES_VERSION:-pg16}
+    container_name: postgres
+    restart: unless-stopped
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    # Use non-default ports to avoid conflicts with host Postgres
+    # and to add a thin layer of obscurity.
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-homelab}
+      - TZ=${TZ:-UTC}
+
+    # shm_size prevents "out of shared memory" errors for complex queries.
+    # Default Docker shm is 64MB, which is too small for Postgres.
+    shm_size: ${POSTGRES_SHM_SIZE:-256m}
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-homelab}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    networks:
+      - backend
+
+  redis:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis
+    restart: unless-stopped
+
+    volumes:
+      - redis_data:/data
+
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+    # Run Redis with:
+    #   --appendonly yes    → AOF persistence (survives restarts)
+    #   --maxmemory         → cap memory usage
+    #   --maxmemory-policy  → evict least-recently-used keys when full
+    #   --requirepass       → password auth (set in .env)
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory ${REDIS_MAXMEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD}
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 64M
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+    name: postgres_data
+  redis_data:
+    name: redis_data
+
+# The backend network is shared with other stacks that need DB access.
+# Other stacks reference it as an external network:
+#
+#   networks:
+#     backend:
+#       external: true
+#
+# Then their services can reach postgres:5432 and redis:6379 by name.
+networks:
+  backend:
+    name: backend
+    driver: bridge

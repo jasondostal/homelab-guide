@@ -1,0 +1,31 @@
+# Backup Stack
+# ============
+# Status: INTENTIONALLY MINIMAL
+#
+# Backups are better handled as host-level scripts than as containers.
+#
+# Why not containerize backups?
+# 1. Backup tools (restic, borg) need broad filesystem access to back up
+#    Docker volumes, configs, and host files. This requires extensive
+#    bind mounts that defeat the purpose of containerization.
+# 2. Backups should survive Docker being down. If Docker crashes, a
+#    containerized backup system crashes too.
+# 3. Pre-backup hooks (stopping databases, flushing caches) are simpler
+#    from the host than from inside a container.
+# 4. Cron scheduling is more reliable and debuggable on the host.
+#
+# Instead, use the scripts in ../scripts/:
+#   - backup.sh        → runs restic backup with retention policies
+#   - restore-test.sh  → quarterly restore verification
+#   - healthcheck-ping.sh → pings healthchecks.io from cron
+#
+# See .env.example in this directory for the variables those scripts need.
+#
+# Suggested cron entries (add via `crontab -e`):
+#   # Daily backup at 3 AM
+#   0 3 * * * /path/to/scripts/backup.sh >> /var/log/backup.log 2>&1
+#
+#   # Quarterly restore test (1st of Jan, Apr, Jul, Oct at 4 AM)
+#   0 4 1 1,4,7,10 * /path/to/scripts/restore-test.sh >> /var/log/restore-test.log 2>&1
+
+services: {}

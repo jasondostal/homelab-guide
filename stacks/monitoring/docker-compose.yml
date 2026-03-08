@@ -1,0 +1,74 @@
+# Monitoring Stack
+# ================
+# Runs on: prod utility server
+# Purpose: Lightweight uptime monitoring and status page
+#
+# Uptime Kuma is a self-hosted monitoring tool that checks if your
+# services are up. It supports HTTP, TCP, DNS, Docker, and more.
+# Think of it as a self-hosted alternative to UptimeRobot.
+#
+# Why Uptime Kuma instead of Prometheus/Grafana?
+# For a small homelab, a full Prometheus stack is overkill. Uptime Kuma
+# gives you alerting (Slack, Discord, email, etc.) and a clean status
+# page with minimal resource usage. If you outgrow it, add Prometheus later.
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your values
+#   docker compose up -d
+
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:${UPTIME_KUMA_VERSION:-1}
+    container_name: uptime-kuma
+    restart: unless-stopped
+
+    volumes:
+      - uptime_kuma_data:/app/data
+      # Docker socket access lets Uptime Kuma monitor container status
+      # directly (optional — remove if you only need HTTP checks).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    ports:
+      - "${UPTIME_KUMA_PORT:-3001}:3001"
+
+    environment:
+      - TZ=${TZ:-UTC}
+
+    # Labels for SWAG reverse proxy integration.
+    labels:
+      - "swag=enable"
+      - "swag_url=${UPTIME_KUMA_SUBDOMAIN:-status}.${DOMAIN}"
+      - "swag_port=3001"
+      - "swag_proto=http"
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 64M
+
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http = require('http'); http.get('http://localhost:3001/api/status-page/heartbeat', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    networks:
+      - monitoring
+      - swag_public
+
+volumes:
+  uptime_kuma_data:
+    name: uptime_kuma_data
+
+networks:
+  monitoring:
+    name: monitoring
+    driver: bridge
+  # Join the SWAG network so the reverse proxy can reach this container.
+  swag_public:
+    external: true

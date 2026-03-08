@@ -1,0 +1,145 @@
+# AI Cortex Stack
+# ===============
+# Runs on: cortex dev/AI box
+# Purpose: Local LLM inference with Ollama + chat UI via Open WebUI
+#
+# This stack turns your GPU-equipped dev box into a local AI inference
+# server. Ollama manages model downloads and serving, while Open WebUI
+# provides a ChatGPT-like interface.
+#
+# Prerequisites:
+#   - NVIDIA GPU with recent drivers (nvidia-smi should work)
+#   - NVIDIA Container Toolkit installed:
+#     https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#   - Docker configured to use the nvidia runtime
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your values
+#   docker compose up -d
+#   # Then open http://localhost:3000 (or your SWAG subdomain)
+#
+# Pull models via the Open WebUI interface or CLI:
+#   docker exec -it ollama ollama pull llama3.1:8b
+
+services:
+  ollama:
+    image: ollama/ollama:${OLLAMA_VERSION:-latest}
+    container_name: ollama
+    restart: unless-stopped
+
+    volumes:
+      # Model storage can be large (7B models ~4GB, 70B ~40GB).
+      # Point this to a drive with plenty of space.
+      - ollama_data:/root/.ollama
+
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+
+    environment:
+      # Number of models to keep loaded in VRAM simultaneously.
+      # Set to 1 if you have limited VRAM, higher if you have plenty.
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      # Bind to all interfaces so Open WebUI can reach it.
+      - OLLAMA_HOST=0.0.0.0
+      - TZ=${TZ:-UTC}
+
+    # GPU passthrough — this is the key section for NVIDIA GPU access.
+    # deploy.resources.reservations.devices is the Docker Compose way
+    # to request GPU access (replaces the old --gpus flag).
+    deploy:
+      resources:
+        limits:
+          cpus: "${OLLAMA_CPU_LIMIT:-4.0}"
+          memory: ${OLLAMA_MEMORY_LIMIT:-16G}
+        reservations:
+          cpus: "1.0"
+          memory: 4G
+          devices:
+            - driver: nvidia
+              # "all" passes all GPUs. Use device_ids: ["0"] for a specific GPU.
+              count: ${OLLAMA_GPU_COUNT:-all}
+              capabilities: [gpu]
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSk http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    networks:
+      - ai_cortex
+
+    labels:
+      - "swag=enable"
+      - "swag_url=${OLLAMA_SUBDOMAIN:-ollama}.${DOMAIN}"
+      - "swag_port=11434"
+      - "swag_proto=http"
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:${OPEN_WEBUI_VERSION:-main}
+    container_name: open-webui
+    restart: unless-stopped
+
+    # Open WebUI needs Ollama to be healthy before it can connect.
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+    volumes:
+      - open_webui_data:/app/backend/data
+
+    ports:
+      - "${OPEN_WEBUI_PORT:-3000}:8080"
+
+    environment:
+      # Point Open WebUI at the Ollama container.
+      # Uses the Docker network DNS name, not localhost.
+      - OLLAMA_BASE_URL=http://ollama:11434
+      # Disable telemetry for privacy.
+      - SCARF_NO_ANALYTICS=true
+      - DO_NOT_TRACK=true
+      - ANONYMIZED_TELEMETRY=false
+      - TZ=${TZ:-UTC}
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSk http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    networks:
+      - ai_cortex
+      - swag_public
+
+    labels:
+      - "swag=enable"
+      - "swag_url=${OPEN_WEBUI_SUBDOMAIN:-chat}.${DOMAIN}"
+      - "swag_port=8080"
+      - "swag_proto=http"
+
+volumes:
+  ollama_data:
+    name: ollama_data
+  open_webui_data:
+    name: open_webui_data
+
+networks:
+  ai_cortex:
+    name: ai_cortex
+    driver: bridge
+  # Join the SWAG network for reverse proxy access.
+  # If the cortex box doesn't run SWAG, remove this and access
+  # services directly by port or via Tailscale.
+  swag_public:
+    external: true

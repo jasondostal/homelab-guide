@@ -1,0 +1,101 @@
+# SWAG Reverse Proxy Stack
+# ========================
+# Runs on: prod utility server
+# Purpose: TLS termination, reverse proxy, and fail2ban for all services
+#
+# SWAG (Secure Web Application Gateway) by LinuxServer.io bundles:
+#   - Nginx reverse proxy
+#   - Let's Encrypt / ZeroSSL certificate management
+#   - fail2ban intrusion prevention
+#
+# This creates a shared network ("swag_public") that other stacks join
+# to be proxied. SWAG auto-discovers services via proxy configs in its
+# config volume, or you can use its built-in template system.
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your values
+#   docker compose up -d
+#
+# After first boot, SWAG creates sample proxy configs in:
+#   ./config/nginx/proxy-confs/
+# Copy and rename the .sample files for each service you want to expose.
+
+services:
+  swag:
+    image: lscr.io/linuxserver/swag:${SWAG_VERSION:-latest}
+    container_name: swag
+    restart: unless-stopped
+
+    # These must be open on your firewall / router.
+    # Port 80 is required for HTTP -> HTTPS redirect and ACME challenges.
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      # Main config directory — contains nginx configs, certs, fail2ban.
+      # Mount this to a host path so you can easily edit proxy configs.
+      - swag_config:/config
+
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+      # Your registered domain name
+      - URL=${DOMAIN}
+      # Comma-separated subdomains to include in the certificate.
+      # "wildcard" gets a *.yourdomain.com cert (recommended).
+      - SUBDOMAINS=${SUBDOMAINS:-wildcard}
+      # Validation method: dns or http.
+      # DNS validation is required for wildcard certs and works even
+      # if ports 80/443 aren't publicly accessible (e.g., Tailscale-only).
+      - VALIDATION=${VALIDATION:-dns}
+      # DNS plugin matching your registrar/provider (e.g., cloudflare, route53).
+      # SWAG ships with plugins for most providers.
+      - DNSPLUGIN=${DNSPLUGIN:-cloudflare}
+      # Email for Let's Encrypt registration and expiry notices.
+      - EMAIL=${LETSENCRYPT_EMAIL}
+      # Use staging server while testing to avoid rate limits.
+      # Set to "true" until you confirm certs are working, then remove.
+      - STAGING=${STAGING:-false}
+
+    # Capability needed for fail2ban to manage iptables rules.
+    # Without this, fail2ban can still log but can't actually ban IPs.
+    cap_add:
+      - NET_ADMIN
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSk https://localhost:443 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    networks:
+      - swag_public
+
+volumes:
+  swag_config:
+    name: swag_config
+
+# The swag_public network is the key integration point.
+# Other stacks declare this as an external network and attach their
+# services to it so SWAG can route traffic to them by container name.
+#
+# Example in another stack's docker-compose.yml:
+#   networks:
+#     swag_public:
+#       external: true
+networks:
+  swag_public:
+    name: swag_public
+    driver: bridge

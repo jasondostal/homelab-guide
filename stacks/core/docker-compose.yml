@@ -1,0 +1,74 @@
+# Core Management Stack
+# ====================
+# Runs on: prod utility server
+# Purpose: Container management UI via Portainer CE
+#
+# Portainer provides a web UI for managing Docker containers, images,
+# networks, and volumes across your homelab. It's the first thing you
+# deploy so you can manage everything else visually.
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your values
+#   docker compose up -d
+
+services:
+  portainer:
+    image: portainer/portainer-ce:${PORTAINER_VERSION:-2.21}
+    container_name: portainer
+    restart: unless-stopped
+
+    # Portainer needs access to the Docker socket to manage containers.
+    # This is a privileged operation — only run Portainer on trusted hosts.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer_data:/data
+
+    # Expose the web UI port. In production, you'll access this through
+    # SWAG reverse proxy instead of hitting the port directly.
+    ports:
+      - "${PORTAINER_PORT:-9443}:9443"
+
+    # Labels for SWAG reverse proxy integration.
+    # SWAG reads these to auto-generate nginx proxy configs.
+    labels:
+      - "swag=enable"
+      - "swag_url=${PORTAINER_SUBDOMAIN:-portainer}.${DOMAIN}"
+      - "swag_port=9443"
+      - "swag_proto=https"
+
+    # Resource limits prevent a single container from starving the host.
+    # Portainer is lightweight — 256MB is generous for normal use.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 64M
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "https://localhost:9443/api/status", "--no-check-certificate"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    networks:
+      - core
+
+    environment:
+      - TZ=${TZ:-UTC}
+
+# Named volumes persist data across container restarts and upgrades.
+# Docker manages these in /var/lib/docker/volumes/ by default.
+volumes:
+  portainer_data:
+    name: portainer_data
+
+# Custom bridge network isolates this stack's traffic.
+# Other stacks don't need to talk to Portainer directly.
+networks:
+  core:
+    name: core
+    driver: bridge
