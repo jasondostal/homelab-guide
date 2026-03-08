@@ -355,6 +355,28 @@ Geo-blocking means denying requests from entire countries based on the source IP
 
 If you do use it, implement it as a deny list (block specific countries) rather than an allow list (allow only your country) unless you're very sure of your access patterns. And always have an alternative access method (VPN to your home network) in case you need to bypass it.
 
+### What to Return: 418 I'm a Teapot
+
+When a geo-blocked request arrives, most configs return a 403 Forbidden. That works, but it confirms to scanners that a real service exists behind this IP and might be worth probing further.
+
+Instead, return a 418:
+
+```nginx
+# In your geo-blocking config
+if ($allowed_country = no) {
+    return 418 "I'm a teapot. This service is not available in your region.\n";
+}
+```
+
+Why 418? A few reasons:
+
+1. **It's confusing to automated scanners.** Bots are programmed to interpret 403 (try harder), 404 (move on), and 200 (success). 418 is none of these. Most scanners don't know what to do with it and move on.
+2. **It's honest in a weird way.** The request was valid, the server is here, but it's not going to do what you want. That's... kind of what a teapot does when you ask it to brew coffee.
+3. **It's easy to grep for.** When you're reviewing your logs, `418` cleanly identifies geo-blocked traffic vs legitimate 403s from auth failures or misconfigured permissions. No ambiguity.
+4. **It's funny.** And in a hobby where you spend evenings writing YAML, funny counts.
+
+See Chapter 11 for a full 418 teapot setup as an edge stack smoke test — same idea, different purpose.
+
 ## Internal-Only Services
 
 Not everything should be reachable from the internet. Your database management tools, monitoring dashboards, and admin panels should only be accessible from your LAN.
