@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-09
+
+### Added
+- Chapter 12: Outbound Email section — AWS SES as the recommended transactional email service, comparison table of homelab-friendly alternatives (Resend, Brevo, Mailgun, SMTP2GO, Mailpit), anti-pattern callout for self-hosted SMTP
+- Chapter 12: SES added to "What's Actually Useful" service list and always-free tier breakdown
+
 ## [0.4.1] - 2026-03-08
 
 ### Added

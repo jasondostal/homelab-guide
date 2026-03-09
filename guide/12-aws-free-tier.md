@@ -45,6 +45,10 @@ This isn't just about AI/Bedrock. The breadth is the point:
 - **CodeCommit** (5 active users) — git hosting. Might prefer GitHub, but it exists.
 - **SNS** (1M publishes) + **SQS** (1M requests) — messaging and queuing. Experiment with event-driven architectures.
 
+### Email
+
+- **SES** (62,000 emails/month from EC2, 3,000 otherwise) — transactional email. Point your homelab services at SES's SMTP endpoint and stop worrying about deliverability. Covered in detail below.
+
 ### Monitoring & Observability
 
 - **CloudWatch** (10 custom metrics, 10 alarms) — use it as an external monitoring layer for your homelab. Alert when your home IP changes, when health checks fail from outside your network, when cert expiry approaches.
@@ -111,6 +115,52 @@ Don't try to learn all of AWS. Do this instead:
 
 ---
 
+## Outbound Email — SES and Alternatives
+
+Every homelab eventually needs to send email. Alerts, password resets, notifications, invite links — it all requires outbound SMTP. Running your own mail server is one of the few things in this guide I'll tell you flat out: **don't**. Deliverability is a nightmare. IP reputation management is a full-time job. You'll spend more time fighting spam blacklists than actually using your homelab.
+
+Instead, use a transactional email service. Your homelab services point their SMTP settings at the service, and email just works.
+
+### AWS SES — The One We Use
+
+**[Amazon SES](https://aws.amazon.com/ses/)** (Simple Email Service) is the best deal going for homelabbers:
+
+- **62,000 emails/month free** when sending from an application hosted on EC2 (or 3,000/month on the free tier otherwise). Way more than any homelab needs.
+- Dead simple SMTP relay — point your services at SES's SMTP endpoint with IAM credentials and you're done.
+- Rock-solid deliverability because you're sending from Amazon's infrastructure.
+- Supports DKIM, SPF, and DMARC out of the box — your emails actually land in inboxes, not spam.
+
+Setup is straightforward:
+
+1. Verify your domain in SES (add a few DNS records).
+2. Request production access (SES starts in sandbox mode — you have to ask to send to unverified addresses).
+3. Create SMTP credentials (IAM user with SES send permissions).
+4. Point your services at `email-smtp.<region>.amazonaws.com` on port 587 with those credentials.
+
+Most homelab services (Authentik, Vaultwarden, Healthchecks.io, Gitea, etc.) have SMTP settings right in their config. Set it once, forget it.
+
+### Other Homelab-Friendly Options
+
+If you'd rather not tie email to AWS, these are solid alternatives:
+
+| Service | Free Tier | Notes |
+|---------|-----------|-------|
+| **[Resend](https://resend.com)** | 3,000 emails/month, 100/day | Developer-focused, clean API, great docs. Built on AWS SES under the hood but with a much nicer interface. |
+| **[Brevo](https://brevo.com)** (formerly Sendinblue) | 300 emails/day | Generous daily limit. SMTP relay works well for homelab use. |
+| **[Mailgun](https://mailgun.com)** | 1,000 emails/month for 3 months | Industry standard for transactional email. Excellent deliverability. Gets expensive after the trial. |
+| **[SMTP2GO](https://smtp2go.com)** | 1,000 emails/month | Straightforward SMTP relay, no nonsense. Good for set-and-forget homelab use. |
+| **[Mailpit](https://mailpit.axllent.org)** | Self-hosted, unlimited | Email testing tool — catches all outbound email in a web UI. **Not for production sending.** Perfect for dev/testing when you want to verify your services send email without actually delivering it. |
+
+> **My pick:** AWS SES if you're already in the AWS ecosystem (and if you're reading this chapter, you are). The free tier is absurdly generous for homelab volumes, and you're already managing IAM credentials anyway. Resend is the best alternative if you want something more developer-friendly with less AWS overhead.
+
+### The Anti-Pattern: Self-Hosted SMTP
+
+You'll see guides recommending Postfix, Maddy, or Mail-in-a-Box for self-hosted email. For *receiving* email or running a full mailbox server, those have their place (though I'd still argue against it for most people). For *sending* transactional email from homelab services, they're overkill and fragile. Your home IP will get blacklisted. Your emails will land in spam. You'll spend hours debugging deliverability issues that a managed service solves for free.
+
+Use a service for sending. Save your energy for the parts of your homelab that are actually fun.
+
+---
+
 ## The Always-Free Tier
 
 Some AWS services have a permanent free tier that doesn't expire after 12 months. These are worth knowing about:
@@ -122,7 +172,9 @@ Some AWS services have a permanent free tier that doesn't expire after 12 months
 - **CloudWatch** — 10 custom metrics, 10 alarms, forever.
 - **API Gateway** — 1M REST API calls/month for the first 12 months, but HTTP APIs remain very cheap after.
 
-The Lambda + DynamoDB + API Gateway combination is permanently free for small-scale use. You can build lightweight serverless tools that complement your homelab indefinitely without spending a dollar.
+- **SES** — 62,000 emails/month when sending from EC2, forever. Even without EC2, pricing is $0.10/1,000 emails — essentially free at homelab volumes.
+
+The Lambda + DynamoDB + SES + API Gateway combination is permanently free for small-scale use. You can build lightweight serverless tools that complement your homelab indefinitely without spending a dollar.
 
 ---
 
