@@ -125,6 +125,27 @@ If you're running a NAS or have a dedicated storage array, mount it via NFS or S
 
 > **Warning:** Your media library is large and changes infrequently — it's a different backup profile than your application data. Back up your Jellyfin configuration and metadata database (small, changes often), but think carefully about whether you need to back up the media files themselves. If they're ripped from discs you own, the discs ARE the backup.
 
+### The Jellyfin Ecosystem: From Server to Platform
+
+Jellyfin on its own is a media server. Add a couple of companion tools and it becomes a polished, multi-user media platform that rivals commercial streaming services.
+
+**Jellyseerr** — media request management. This is how you let family and friends request movies and shows without giving them access to your server's admin panel. Jellyseerr presents a Netflix-like discovery UI where users browse, search, and request content. It integrates with the *arr stack (below) to automatically fulfill requests, or you can approve them manually.
+
+Why it matters: without Jellyseerr, you're the bottleneck. "Hey, can you add Season 3 of X?" becomes a text message you deal with at 10 PM. With Jellyseerr, the request goes into a queue, you approve (or it auto-approves), and the media pipeline handles the rest. Your users feel like they're using a real streaming service.
+
+**jellyfin-accounts (Go)** — invite-based user management. Jellyfin's built-in user creation is fine for you and your household, but it doesn't scale gracefully when you want to share with friends. jellyfin-accounts-go provides invite links, self-service account creation with configurable permissions, and password reset flows — all the account management you'd expect from a real service.
+
+Together, the stack looks like:
+
+```
+Jellyfin (media server)
+  + Jellyseerr (request & discovery UI)
+  + jellyfin-accounts-go (user management & invites)
+  + *arr stack (automated media acquisition — optional, see below)
+```
+
+This is the difference between "I run a Plex alternative" and "I run a streaming service for my people." The polish matters — not because you're chasing features, but because a smooth experience means people actually use it, which justifies the infrastructure.
+
 ### The *arr Stack
 
 You'll hear about Sonarr, Radarr, Prowlarr, Bazarr, Lidarr, and the rest. These are automated media management tools that monitor for new content, manage downloads, organize files, and feed them to Jellyfin. They're powerful and they're a rabbit hole.
@@ -549,72 +570,6 @@ This is a platform. Not in the VC-funded, growth-hacking sense. A platform in th
 Each new capability is a composable primitive that integrates with the system you've already built. That's the payoff of doing the infrastructure right. The marginal cost of adding "one more sensor" approaches the cost of the hardware itself, because the software layer, the networking, the monitoring, and the backup strategy already exist.
 
 Your home becomes a platform you control, extend, and maintain — not a collection of apps from different companies that may or may not still exist next year.
-
----
-
-## Experimenting on AWS Free Tier
-
-### Your Homelab's Cloud Extension
-
-This might seem contradictory — a self-hosting guide telling you to use AWS. But the AWS Free Tier is too useful to ignore, especially as a learning tool and as a complement (not replacement) for your homelab.
-
-The Free Tier gives you 12 months of access to a staggering number of services at zero cost. Most homelab guides ignore this entirely. That's a mistake. Treat AWS Free Tier as your lab's cloud campus — a place to experiment with things that don't make sense to run at home.
-
-### What's Actually Useful on Free Tier
-
-This isn't just about AI/Bedrock. The breadth is the point:
-
-**Compute & Hosting:**
-- **EC2** (750 hrs/month t2.micro or t3.micro) — a small cloud VM. Use it as a VPS relay if you're behind CGNAT, a remote WireGuard endpoint, or a place to test deployments before running them at home.
-- **Lambda** (1M requests/month, 400,000 GB-seconds) — serverless functions. Great for webhooks, API integrations, and small automations that don't justify a running container.
-- **Lightsail** (first 3 months free) — simpler VPS. Good for a public-facing landing page or status page.
-
-**Storage:**
-- **S3** (5GB, 20,000 GETs, 2,000 PUTs) — object storage. Use it as a restic backend for your off-prem backups, or host a static site.
-- **DynamoDB** (25GB, 25 read/write capacity units) — NoSQL database. Experiment with serverless data patterns.
-
-**AI & Machine Learning:**
-- **Bedrock** — managed access to Claude, Llama, and other foundation models. Compare API-based inference to your local Ollama setup.
-- **SageMaker** (first 2 months, 250 hours of t3.medium notebook) — ML notebooks. Good for experimenting with model fine-tuning or data processing.
-- **Rekognition** (5,000 images/month) — image analysis. Compare to self-hosted alternatives.
-- **Transcribe** (60 minutes/month for 12 months) — speech to text.
-- **Comprehend** — NLP, sentiment analysis, entity extraction.
-
-**Networking:**
-- **CloudFront** (1TB transfer out, 10M requests) — CDN. Put it in front of a static site or use it as a global cache for your homelab's public-facing services.
-- **Route 53** — hosted DNS zones. Alternative to Cloudflare if you want to manage DNS as code with Terraform.
-- **API Gateway** (1M API calls/month) — managed API endpoints. Wire up Lambda functions behind a proper API.
-
-**Developer Tools:**
-- **CodeBuild** (100 build minutes/month) — CI/CD. Build your container images in the cloud instead of locally.
-- **CodeCommit** (5 active users) — git hosting. Might prefer GitHub, but it exists.
-- **SNS** (1M publishes) + **SQS** (1M requests) — messaging and queuing. Experiment with event-driven architectures.
-
-**Monitoring & Observability:**
-- **CloudWatch** (10 custom metrics, 10 alarms) — use it as an external monitoring layer for your homelab. Alert when your home IP changes, when health checks fail from outside your network, when cert expiry approaches.
-
-### The Smart Way to Use Free Tier
-
-Don't try to learn all of AWS. Do this instead:
-
-1. **Pick one project.** "I want to set up an S3 bucket as a restic backup target" or "I want a Lambda function that monitors my homelab's public IP and texts me if it changes."
-2. **Build it.** Use the free tier. Stay within limits. Set up billing alerts (seriously — `$1 threshold` billing alarm, day one, no exceptions).
-3. **Understand the bill.** Even on free tier, understand what would cost money at scale. AWS pricing is intentionally confusing. Knowing where the costs hide is a skill worth having.
-4. **Connect it to your homelab.** S3 as a backup target. CloudWatch as external monitoring. Lambda as a webhook processor. API Gateway as a public endpoint that talks to your home network via Tailscale.
-
-> **Warning:** AWS billing can surprise you. Set up a billing alarm at $1 on day one. Turn it on before you create anything else. Free tier limits are generous but specific — exceed them by one unit and you're paying on-demand rates. Use the AWS Free Tier Usage dashboard to track consumption. If you see charges appearing, stop and investigate immediately.
-
-### What Doesn't Make Sense
-
-- Don't run your homelab services on AWS. That defeats the purpose and gets expensive fast.
-- Don't use AWS as your primary backup target if Backblaze B2 is cheaper (it usually is for storage-heavy workloads). B2 is $6/TB/month with free egress. S3 charges for egress.
-- Don't build on AWS Free Tier services that you'll need to pay for after 12 months unless you've budgeted for it.
-
-### The Learning Value
-
-The real value of Free Tier isn't the free compute. It's understanding how cloud infrastructure works — IAM roles, VPCs, security groups, managed services, infrastructure as code. This makes you a better engineer whether you're running a homelab or building production systems at work.
-
-Your homelab teaches you ops from the bottom up. AWS Free Tier teaches you ops from the top down. Both perspectives make the other more valuable.
 
 ---
 

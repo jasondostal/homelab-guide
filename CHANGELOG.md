@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-08
+
+### Added
+- Chapter 12: AWS Free Tier — broken out from Ch11 into a dedicated chapter with expanded content (practical project examples, always-free tier breakdown, S3/Lambda/CloudWatch homelab integration patterns)
+- Chapter 05: What's Up Docker (WUD) section — container update awareness without auto-updating, WUD vs Watchtower philosophy, setup example
+- Chapter 11: Jellyfin ecosystem — Jellyseerr (media request management) and jellyfin-accounts-go (invite-based user management) as companion tools that make Jellyfin a polished multi-user platform
+
+### Changed
+- Chapter 11: Removed AWS Free Tier section (moved to dedicated Ch12)
+
 ## [0.3.1] - 2026-03-08
 
 ### Changed

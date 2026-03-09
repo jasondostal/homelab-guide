@@ -334,7 +334,55 @@ A practical monitoring setup for a homelab with 5-15 services:
 3. **Docker health checks** on all containers so `docker ps` gives you meaningful status.
 4. **Docker log rotation** configured in daemon.json.
 5. **(Optional) Uptime Kuma** if you want a status page or response time tracking.
+6. **(Optional) What's Up Docker** for container image update awareness.
 
-Total resource cost: Uptime Kuma uses maybe 100MB of RAM. Everything else runs externally or as lightweight cron jobs. Compare that to a Prometheus + Grafana + Alertmanager + exporters stack that easily consumes 1-2GB of RAM.
+Total resource cost: Uptime Kuma uses maybe 100MB of RAM. WUD is similarly lightweight. Everything else runs externally or as lightweight cron jobs. Compare that to a Prometheus + Grafana + Alertmanager + exporters stack that easily consumes 1-2GB of RAM.
 
 You can always add more later. Start simple, add complexity only when the simple approach fails you. That's the homelab way.
+
+## What's Up Docker (WUD) — Container Update Awareness
+
+There's a gap between "my containers are running" and "my containers are up to date." Healthchecks.io and Uptime Kuma don't cover this. Watchtower can auto-update, but auto-updating is a gamble — you might not want that 3am surprise when a breaking change drops.
+
+What's Up Docker (WUD) fills this gap cleanly. It watches your running containers, checks registries for new image versions, and tells you what's available — without pulling or applying anything. It's awareness, not action.
+
+### Why WUD Over Watchtower
+
+Watchtower is the more commonly recommended tool, and it works. But its default mode is auto-update: pull the new image, recreate the container, hope nothing breaks. You can run Watchtower in monitor-only mode, but at that point you're using Watchtower to do what WUD was purpose-built for.
+
+WUD is designed from the ground up as an update awareness tool:
+
+- **Dashboard** showing all your containers, their current versions, and available updates — at a glance
+- **Trigger integrations** — send notifications via SMTP, Slack, Discord, Home Assistant, or webhooks when updates are available
+- **Registry support** — Docker Hub, GitHub Container Registry, LinuxServer.io, and custom registries
+- **Semantic versioning awareness** — it understands semver, so it can distinguish patch updates (probably safe) from major version bumps (read the changelog first)
+- **Digest watching** — catches updates even when the tag doesn't change (e.g., `latest` getting a new build)
+
+### The Workflow
+
+1. WUD detects a new version of, say, `linuxserver/jellyfin`
+2. You get a notification (Discord, email, whatever)
+3. You read the changelog at your leisure
+4. You pull and redeploy on your schedule, not the tool's
+
+This respects the Chapter 09 update philosophy: know what changed before you deploy it. WUD gives you the knowledge. You decide the timing.
+
+### Setup
+
+WUD runs as a single container with access to the Docker socket:
+
+```yaml
+services:
+  wud:
+    image: fmartinou/whats-up-docker:latest
+    container_name: wud
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - WUD_TRIGGER_DISCORD_1_URL=${WUD_DISCORD_WEBHOOK}  # optional
+    restart: unless-stopped
+```
+
+Point your browser at the WUD dashboard and you've got a live inventory of every container's update status. Pair it with your Homepage dashboard for an integrated view.
+
+> **Note:** WUD needs Docker socket access to read container metadata. This is read-only — it never modifies your containers. But the Docker socket is a privileged resource. Mount it `:ro` (read-only) and be aware of the trade-off. This is the same access pattern as Portainer and Homepage.

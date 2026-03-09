@@ -30,6 +30,7 @@ The full-length primer, heavy on *why* and trade-offs:
 | [09 - Day Two Ops](guide/09-day-two-ops.md) | Updates, maintenance, incident response, growing the lab |
 | [10 - Domains, Certs & Remote Access](guide/10-domains-certs-remote-access.md) | DNS, dynamic IP, TLS certs, Tailscale, VPN options |
 | [11 - The Fun Stuff](guide/11-fun-stuff.md) | Ad blocking, media, home automation, and why you started this |
+| [12 - AWS Free Tier](guide/12-aws-free-tier.md) | Cloud extension for your homelab — S3, Lambda, Bedrock, and more |
 
 ### The Stacks
 
