@@ -170,6 +170,9 @@ Model Context Protocol (MCP) is an open standard for giving AI assistants access
 
 Without MCP, your AI assistant is limited to what's in its context window. With MCP servers, it can query your database, search your codebase, check your monitoring dashboards, read your documentation — all through a standardized protocol. It turns a chatbot into a development partner with access to your actual infrastructure.
 
+![Cairn MCP — semantic memory for AI agents](../images/cairn-memory.png)
+*A real MCP server in action: Cairn provides semantic memory and work tracking for AI agents. Memories are stored, searched, and recalled across sessions — giving your AI collaborators persistent context about your projects, decisions, and progress. This is the kind of tooling that runs on your cortex box.*
+
 #### Running MCP Servers as Containers
 
 MCP servers are typically lightweight processes. Containerizing them gives you the usual benefits: isolation, reproducibility, easy updates.

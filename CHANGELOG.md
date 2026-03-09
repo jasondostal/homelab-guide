@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-08
+
+### Added
+- Screenshots from a live homelab: Homepage dashboard (README + Ch11), SWAG dashboard (Ch04), Cairn MCP memory UI (Ch07)
+- images/ directory for guide assets
+
 ## [0.4.0] - 2026-03-08
 
 ### Added

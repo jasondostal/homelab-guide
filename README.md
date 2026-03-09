@@ -4,6 +4,9 @@
 
 A decision framework and reference implementation for running a Docker-based homelab that's secure enough to sleep at night and flexible enough to do real AI-assisted development during the day.
 
+![Homepage dashboard — the blinkenlights](images/homepage-dashboard.png)
+*The aquarium. Services, media tools, network/infra, printer status, Home Assistant — all in one pane of glass.*
+
 ## Who This Is For
 
 You're a developer. You've maybe run a few containers locally. You're interested in self-hosting, AI tooling, or just owning your own infrastructure. You want to do it *right* — not "works until it doesn't" right, but "I understand why every piece is here and what it's protecting me from" right.

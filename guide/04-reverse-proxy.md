@@ -142,6 +142,9 @@ SWAG includes a built-in dashboard that gives you a quick overview of your proxy
 
 Access it at `https://yourdomain.com` (the root domain) or configure it on its own subdomain. It's not a deep analytics tool — it's a quick health check. Glance at it when something feels off. Check that your cert isn't about to expire. See if fail2ban is being unusually busy (which might mean someone is poking at you, or might mean you misconfigured a jail and are banning yourself).
 
+![SWAG dashboard — proxy confs, fail2ban jails, version updates](../images/swag-dashboard.png)
+*A real SWAG dashboard: active proxy configurations with health indicators, fail2ban jail status, and config version tracking. All green checks means all proxied services are reachable and healthy.*
+
 ## Fail2ban — Automated Threat Response
 
 ### How Jails Work

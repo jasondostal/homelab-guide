@@ -360,6 +360,9 @@ There's genuine value in this beyond vanity. A dashboard you actually enjoy look
 
 Put it on a spare tablet on your desk. Let it auto-refresh. It's part information radiator, part ambient monitoring, part proof that all the YAML was worth it.
 
+![Homepage dashboard — the blinkenlights](../images/homepage-dashboard.png)
+*A real Homepage dashboard: services with live stats, media tools with queue status, network infrastructure with query counts and connection monitoring, even 3D printer status. This is what "all green" looks like.*
+
 ### Homepage vs Homarr
 
 **Homepage** (gethomepage.dev) is YAML-configured, fast, clean, and integrates with a huge number of services for live widgets (Docker container status, Jellyfin now playing, AdGuard stats, etc.). If you're comfortable with YAML — and if you've made it to Chapter 11, you are — Homepage is the right choice.
