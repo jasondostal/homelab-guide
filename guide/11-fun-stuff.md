@@ -28,6 +28,8 @@ This guide uses AdGuard Home because the built-in encrypted DNS support and the 
 
 > **Note:** This is a "pick one and move on" decision. Both tools solve the same problem. Don't install both. Don't spend three days comparing them. Pick the one whose UI you like better and get on with your life.
 
+> **Full disclosure:** This guide recommends AdGuard Home for new setups because of its lower configuration overhead with VLANs and encrypted DNS. The author runs Pi-hole. Has for years. It's rock solid and the community support is unmatched. The recommendation isn't "AdGuard is better" — it's "AdGuard has less friction for the specific setup we're describing." Either choice is a good one.
+
 ### The Real Magic: VLANs + DNS Blocking
 
 Here's where your Chapter 02 network segmentation pays dividends. Your IoT devices are on their own VLAN, and you control their DNS. Point that VLAN's DHCP to your AdGuard Home instance and those devices physically cannot resolve tracking domains.
@@ -144,6 +146,23 @@ This is the most technically ambitious service in this chapter, and also the one
 Here's the dirty secret of the smart home industry: almost every device requires a cloud connection. Your "smart" light bulb sends a command from your phone to a server in AWS, which sends a command back to the bulb sitting three feet away from you. If the company's servers go down — or the company goes bankrupt, or they push a bad firmware update, or they decide to change their pricing — your lights stop being smart.
 
 Home Assistant runs locally. It talks directly to your devices over your local network (WiFi, Zigbee, Z-Wave, Bluetooth, MQTT). Commands execute in milliseconds, not seconds. And nothing breaks because someone's cloud had an outage.
+
+### The Iron Rule: Everything Works Without Home Assistant
+
+This is the most important philosophy in this section, and it's non-negotiable: **every physical control in your house must work even when Home Assistant is down.**
+
+Your light switches still toggle lights. Your garage door button still opens the garage. Your thermostat still heats and cools. Home Assistant adds intelligence on top — automations, remote control, scheduling, dashboards — but it is never a single point of failure for basic functionality.
+
+This is why we use Shelly relays wired behind physical switches instead of "smart switches" that require a hub or cloud connection. A Shelly relay sits between your wall switch and your light fixture. Flip the switch, the relay toggles, the light turns on. No network required. No Home Assistant required. No WiFi required. It's a relay. It relays.
+
+When Home Assistant IS running, it can also control that relay via MQTT or HTTP — scheduling, automations, remote control, the works. But when HA is down (update, crash, your server is off), your house still works like a house. Switches switch. Lights light.
+
+This principle extends to everything:
+- **Thermostats** should have local controls and schedules. HA enhances, not replaces.
+- **Garage doors** have wall buttons. HA adds remote control and notifications.
+- **Locks** have physical keys or keypads. HA adds logging and automation.
+
+If you design your smart home so that Home Assistant being unavailable means your family can't turn on a light, you've built a fragile system that will generate justified complaints. Home Assistant is the brain, not the spine. The spine is simple, reliable hardware that works with or without software.
 
 ### The Integration Ecosystem
 
@@ -308,11 +327,17 @@ A single landing page with links, status indicators, and widgets for all your ho
 
 This sounds trivial. It is trivial. And it's surprisingly useful once you have more than a handful of services.
 
-### Why Bother
+### Why Bother — Blinkenlights
 
 Without a dashboard, you're either memorizing URLs (`http://192.168.1.50:8096` for Jellyfin, `https://ha.yourdomain.com` for Home Assistant, `https://status.yourdomain.com:3001` for Uptime Kuma...) or maintaining a bookmark folder that you forget to update. A dashboard with service health indicators eliminates this friction.
 
-It also gives you a gut-check on your homelab's health every time you open it. Green indicators everywhere? Good. A red dot on the backup service? Investigate.
+But let's be honest about the real reason: **this is your aquarium.**
+
+Throughout this guide we've preached "containers are cattle, data is pets." That's operationally correct. But emotionally? You care about these things. You built them. You configured them. You nursed them through broken updates at midnight. Your Homepage dashboard is where you get to watch all your pets in one place — container status tiles blinking green, service widgets pulling live stats, resource graphs ticking along. It's the blinkenlights experience for the modern homelab.
+
+There's genuine value in this beyond vanity. A dashboard you actually enjoy looking at is a dashboard you check regularly. And a dashboard you check regularly means you notice problems early — before a silent failure becomes a data loss event. The little green tiles aren't just satisfying; they're a passive monitoring layer. When one goes red, you notice because it breaks the pattern.
+
+Put it on a spare tablet on your desk. Let it auto-refresh. It's part information radiator, part ambient monitoring, part proof that all the YAML was worth it.
 
 ### Homepage vs Homarr
 

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-03-08
+
+### Changed
+- Chapter 11: Ad blocking — added author's note on running Pi-hole despite recommending AdGuard Home for new setups (authenticity over dogma)
+- Chapter 11: Home Assistant — added "The Iron Rule" section: everything must work without HA. Shelly relays behind physical switches as the reference pattern. HA is the brain, not the spine.
+- Chapter 11: Homepage dashboard — rewrote "Why Bother" as "Blinkenlights" — the aquarium metaphor, passive monitoring value, containers-are-cattle-but-you-still-love-them energy
+- Chapter 04: Added 418 teapot response for geo-blocked requests
+
 ## [0.3.0] - 2026-03-08
 
 ### Added
